@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "AutoNF NFS-e",
+  "description": "Automatiza etapas de preenchimento da NFS-e no Emissor Nacional.",
+  "version": "0.1.0",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "sidePanel",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://www.nfse.gov.br/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "icons": {
+    "16": "assets/nfse-favicon-16.png",
+    "32": "assets/nfse-favicon-32.png",
+    "48": "assets/nfse-favicon-48.png",
+    "128": "assets/nfse-favicon-128.png"
+  },
+  "action": {
+    "default_title": "AutoNF NFS-e",
+    "default_icon": {
+      "16": "assets/nfse-favicon-16.png",
+      "32": "assets/nfse-favicon-32.png",
+      "48": "assets/nfse-favicon-48.png",
+      "128": "assets/nfse-favicon-128.png"
+    }
+  },
+  "side_panel": {
+    "default_path": "src/panel.html"
+  },
+  "minimum_chrome_version": "116"
+}

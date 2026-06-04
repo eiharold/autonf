@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AutoNF NFS-e</title>
+    <link rel="stylesheet" href="panel.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <img src="../assets/logo-header-simples.svg" alt="" class="brand-logo">
+          <div>
+            <p class="eyebrow">Emissor Nacional</p>
+            <h1>AutoNF NFS-e</h1>
+          </div>
+        </div>
+        <button id="openPortalBtn" class="icon-button" title="Abrir portal" aria-label="Abrir portal">
+          <span aria-hidden="true">↗</span>
+        </button>
+      </header>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>Cliente</h2>
+          <div class="toolbar">
+            <button id="newPresetBtn" class="secondary icon-only" title="Novo cliente" aria-label="Novo cliente">+</button>
+            <button id="editPresetBtn" type="button" class="secondary icon-only" title="Editar cliente" aria-label="Editar cliente">✎</button>
+          </div>
+        </div>
+        <label class="field compact-field">
+          <select id="presetSelect"></select>
+        </label>
+        <div class="selected-summary">
+          <h3 id="selectedName">Nenhum cliente</h3>
+          <dl>
+          <div>
+            <dt>CNPJ</dt>
+            <dd id="selectedCnpj">-</dd>
+          </div>
+          <div>
+            <dt>Valor</dt>
+            <dd id="selectedValue">-</dd>
+          </div>
+          </dl>
+        </div>
+      </section>
+
+      <form id="presetForm" class="section form is-hidden">
+        <input type="hidden" id="presetId">
+        <div class="section-head">
+          <h2 id="presetFormTitle">Novo cliente</h2>
+          <button type="button" id="closePresetFormBtn" class="ghost-button">Fechar</button>
+        </div>
+        <label class="field">
+          <span>Nome</span>
+          <input id="nameInput" autocomplete="off" required>
+        </label>
+        <div class="form-grid">
+          <label class="field">
+            <span>CNPJ</span>
+            <input id="cnpjInput" inputmode="numeric" placeholder="00.000.000/0000-00" required>
+          </label>
+          <label class="field">
+            <span>Valor (R$)</span>
+            <input id="valueInput" inputmode="decimal" placeholder="600,00" required>
+          </label>
+        </div>
+        <label class="field">
+          <span>Descrição</span>
+          <textarea id="descriptionInput" rows="3" required></textarea>
+        </label>
+        <div class="button-row">
+          <button type="submit" class="primary">Salvar cliente</button>
+          <button type="button" id="deletePresetBtn" class="danger">Excluir</button>
+        </div>
+      </form>
+
+      <section class="section">
+        <div class="section-head note-head">
+          <h2>Nota</h2>
+          <label class="mini-toggle">
+            <span>Auto</span>
+            <input id="autoAdvanceToggle" type="checkbox">
+            <i aria-hidden="true"></i>
+          </label>
+        </div>
+        <div class="action-grid">
+          <button id="fillPeopleBtn" type="button" class="step-button">
+            <span aria-hidden="true">👥</span>
+            <strong>Pessoas</strong>
+          </button>
+          <button id="fillServiceBtn" type="button" class="step-button">
+            <span aria-hidden="true">🔧</span>
+            <strong>Serviço</strong>
+          </button>
+          <button id="fillValuesBtn" type="button" class="step-button">
+            <span aria-hidden="true">💲</span>
+            <strong>Valores</strong>
+          </button>
+        </div>
+        <label class="field">
+          <span>Valor desta nota (R$)</span>
+          <input id="runValueInput" inputmode="decimal">
+        </label>
+        <label class="field">
+          <span>Descrição desta nota</span>
+          <textarea id="runDescriptionInput" rows="4"></textarea>
+        </label>
+      </section>
+
+      <section id="statusSection" class="section diagnostics is-collapsed">
+        <div class="section-head">
+          <h2>Status</h2>
+          <div class="toolbar">
+            <button id="diagnoseBtn" type="button" class="ghost-button status-action">Diagnóstico</button>
+            <button id="clearLogBtn" class="ghost-button status-action">Limpar</button>
+            <button id="toggleStatusBtn" type="button" class="chevron-button" title="Expandir status" aria-label="Expandir status"></button>
+          </div>
+        </div>
+        <pre id="logOutput" aria-live="polite"></pre>
+      </section>
+
+      <footer class="footer">
+        Desenvolvido por <a href="https://eiharold.com" target="_blank" rel="noreferrer">eiHarold</a> - <span id="currentYear"></span>
+      </footer>
+    </main>
+
+    <script src="panel.js"></script>
+  </body>
+</html>
