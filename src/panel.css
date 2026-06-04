@@ -60,6 +60,7 @@ button:disabled {
 }
 
 .brand-logo {
+  border-radius: 4px;
   display: block;
   flex: 0 0 auto;
   height: 34px;
@@ -368,6 +369,65 @@ dd {
   text-align: right;
 }
 
+.status-indicator {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  gap: 7px;
+  margin: 0;
+}
+
+.status-indicator span {
+  background: #9aa5a0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(154, 165, 160, 0.12);
+  display: block;
+  height: 8px;
+  width: 8px;
+}
+
+.status-indicator strong {
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.status-indicator.is-running {
+  color: #8a650f;
+}
+
+.status-indicator.is-running span {
+  animation: statusPulse 0.9s ease-in-out infinite alternate;
+  background: #c58b13;
+  box-shadow: 0 0 0 3px rgba(197, 139, 19, 0.14);
+}
+
+.status-indicator.is-done {
+  color: var(--green-dark);
+}
+
+.status-indicator.is-done span {
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(47, 128, 96, 0.14);
+}
+
+.status-indicator.is-error {
+  color: var(--danger);
+}
+
+.status-indicator.is-error span {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px rgba(163, 59, 59, 0.14);
+}
+
+@keyframes statusPulse {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .diagnostics pre {
   background: #17231f;
   border-radius: 6px;
@@ -380,12 +440,29 @@ dd {
   white-space: pre-wrap;
 }
 
+.status-actions {
+  display: flex;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.status-actions .ghost-button {
+  background: #eef1f0;
+  color: var(--ink);
+  flex: 1;
+  padding-inline: 9px;
+}
+
+.status-actions .ghost-button:hover {
+  background: #e2e7e5;
+}
+
 .diagnostics.is-collapsed {
   padding-bottom: 10px;
 }
 
 .diagnostics.is-collapsed pre,
-.diagnostics.is-collapsed .status-action {
+.diagnostics.is-collapsed .status-actions {
   display: none;
 }
 

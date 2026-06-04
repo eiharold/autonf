@@ -1,6 +1,19 @@
 const STORAGE_KEY = "autonf.presets.v1";
 const SETTINGS_KEY = "autonf.settings.v1";
-const TARGET_URL = "https://www.nfse.gov.br/EmissorNacional";
+const TARGET_URL = "https://www.nfse.gov.br/EmissorNacional/DPS/Pessoas";
+const DEFAULT_DESCRIPTION = "Suporte, instrução, desenvolvimento e/ou manutenção em serviços relacionados a webdesign.";
+const DEFAULT_SETTINGS = {
+  autoAdvance: "no",
+  defaultValue: "",
+  defaultDescription: DEFAULT_DESCRIPTION,
+  municipalityExact: "Natal/RN",
+  taxCodeMatch: "01.08.01 - Planejamento, confecção, manutenção e atualização de páginas eletrônicas.",
+  nbsLabel: "115023000 - Serviços de projeto e desenvolvimento de estruturas e conteúdo de páginas eletrônicas",
+  pisSituationPrefix: "00",
+  retentionTypeValue: "0",
+  retentionTypeLabel: "PIS/COFINS/CSLL Não Retidos",
+  regimeLabel: "Regime de apuração dos tributos federais e municipal pelo Simples Nacional"
+};
 const hasChromeExtensionApi = Boolean(globalThis.chrome?.storage?.local && globalThis.chrome?.tabs);
 
 const elements = {
@@ -13,9 +26,22 @@ const elements = {
   descriptionInput: document.querySelector("#descriptionInput"),
   newPresetBtn: document.querySelector("#newPresetBtn"),
   editPresetBtn: document.querySelector("#editPresetBtn"),
+  settingsBtn: document.querySelector("#settingsBtn"),
   closePresetFormBtn: document.querySelector("#closePresetFormBtn"),
   presetFormTitle: document.querySelector("#presetFormTitle"),
   deletePresetBtn: document.querySelector("#deletePresetBtn"),
+  settingsForm: document.querySelector("#settingsForm"),
+  closeSettingsBtn: document.querySelector("#closeSettingsBtn"),
+  resetSettingsBtn: document.querySelector("#resetSettingsBtn"),
+  defaultValueInput: document.querySelector("#defaultValueInput"),
+  defaultDescriptionInput: document.querySelector("#defaultDescriptionInput"),
+  municipalityExactInput: document.querySelector("#municipalityExactInput"),
+  taxCodeMatchInput: document.querySelector("#taxCodeMatchInput"),
+  nbsLabelInput: document.querySelector("#nbsLabelInput"),
+  pisSituationPrefixInput: document.querySelector("#pisSituationPrefixInput"),
+  retentionTypeValueInput: document.querySelector("#retentionTypeValueInput"),
+  retentionTypeLabelInput: document.querySelector("#retentionTypeLabelInput"),
+  regimeLabelInput: document.querySelector("#regimeLabelInput"),
   selectedName: document.querySelector("#selectedName"),
   selectedCnpj: document.querySelector("#selectedCnpj"),
   selectedValue: document.querySelector("#selectedValue"),
@@ -30,11 +56,15 @@ const elements = {
   clearLogBtn: document.querySelector("#clearLogBtn"),
   statusSection: document.querySelector("#statusSection"),
   toggleStatusBtn: document.querySelector("#toggleStatusBtn"),
+  statusIndicator: document.querySelector("#statusIndicator"),
+  statusText: document.querySelector("#statusText"),
   currentYear: document.querySelector("#currentYear"),
   logOutput: document.querySelector("#logOutput")
 };
 
 let presets = [];
+let automationRunning = false;
+let settings = { ...DEFAULT_SETTINGS };
 
 init();
 
@@ -45,6 +75,7 @@ async function init() {
   renderPresetOptions();
   selectPreset(presets[0]?.id ?? "");
   bindEvents();
+  setAutomationStatus("idle", "Pronto");
   await redirectActiveTabToPortal();
   log("Painel pronto. Faça login manualmente no portal antes de automatizar.");
 }
@@ -59,7 +90,12 @@ function bindEvents() {
     if (!getSelectedPreset()) return;
     openPresetForm("Editar cliente");
   });
+  elements.settingsBtn.addEventListener("click", () => {
+    elements.presetForm.classList.add("is-hidden");
+    elements.settingsForm.classList.toggle("is-hidden");
+  });
   elements.closePresetFormBtn.addEventListener("click", closePresetForm);
+  elements.closeSettingsBtn.addEventListener("click", () => elements.settingsForm.classList.add("is-hidden"));
   elements.autoAdvanceToggle.addEventListener("change", async () => {
     await saveSettings();
     if (elements.autoAdvanceToggle.checked) runAutomation("people");
@@ -81,7 +117,7 @@ function bindEvents() {
     }
 
     await chrome.runtime.sendMessage({ type: "OPEN_PORTAL" });
-    log("Portal aberto na aba atual.");
+    log("Portal aberto.");
   });
 
   elements.presetForm.addEventListener("submit", async (event) => {
@@ -108,6 +144,20 @@ function bindEvents() {
     selectPreset(preset.id);
     closePresetForm();
     log(`Cliente salvo: ${preset.name}.`);
+  });
+
+  elements.settingsForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await saveSettingsFromForm();
+    elements.settingsForm.classList.add("is-hidden");
+    log("Configurações salvas.");
+  });
+
+  elements.resetSettingsBtn.addEventListener("click", async () => {
+    settings = { ...DEFAULT_SETTINGS, autoAdvance: getAutoAdvanceValue() };
+    renderSettingsForm();
+    await persistSettings();
+    log("Configurações restauradas para os padrões.");
   });
 
   elements.deletePresetBtn.addEventListener("click", async () => {
@@ -148,17 +198,22 @@ async function savePresets(nextPresets) {
 }
 
 async function loadSettings() {
-  const fallback = { autoAdvance: "no" };
-  const settings = hasChromeExtensionApi
-    ? (await chrome.storage.local.get(SETTINGS_KEY))[SETTINGS_KEY] || fallback
-    : JSON.parse(localStorage.getItem(SETTINGS_KEY) || JSON.stringify(fallback));
+  const storedSettings = hasChromeExtensionApi
+    ? (await chrome.storage.local.get(SETTINGS_KEY))[SETTINGS_KEY] || {}
+    : JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
 
+  settings = { ...DEFAULT_SETTINGS, ...storedSettings };
   const autoAdvanceValue = settings.autoAdvance === "yes" ? "yes" : "no";
   elements.autoAdvanceToggle.checked = autoAdvanceValue === "yes";
+  renderSettingsForm();
 }
 
 async function saveSettings() {
-  const settings = { autoAdvance: getAutoAdvanceValue() };
+  settings = { ...settings, autoAdvance: getAutoAdvanceValue() };
+  await persistSettings();
+}
+
+async function persistSettings() {
   if (!hasChromeExtensionApi) {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     return;
@@ -167,8 +222,46 @@ async function saveSettings() {
   await chrome.storage.local.set({ [SETTINGS_KEY]: settings });
 }
 
+function renderSettingsForm() {
+  elements.defaultValueInput.value = settings.defaultValue || "";
+  elements.defaultDescriptionInput.value = settings.defaultDescription || "";
+  elements.municipalityExactInput.value = settings.municipalityExact || "";
+  elements.taxCodeMatchInput.value = settings.taxCodeMatch || "";
+  elements.nbsLabelInput.value = settings.nbsLabel || "";
+  elements.pisSituationPrefixInput.value = settings.pisSituationPrefix || "";
+  elements.retentionTypeValueInput.value = settings.retentionTypeValue || "";
+  elements.retentionTypeLabelInput.value = settings.retentionTypeLabel || "";
+  elements.regimeLabelInput.value = settings.regimeLabel || "";
+}
+
+async function saveSettingsFromForm() {
+  settings = {
+    ...settings,
+    autoAdvance: getAutoAdvanceValue(),
+    defaultValue: normalizeMoney(elements.defaultValueInput.value),
+    defaultDescription: elements.defaultDescriptionInput.value.trim() || DEFAULT_SETTINGS.defaultDescription,
+    municipalityExact: elements.municipalityExactInput.value.trim() || DEFAULT_SETTINGS.municipalityExact,
+    taxCodeMatch: elements.taxCodeMatchInput.value.trim() || DEFAULT_SETTINGS.taxCodeMatch,
+    nbsLabel: elements.nbsLabelInput.value.trim() || DEFAULT_SETTINGS.nbsLabel,
+    pisSituationPrefix: elements.pisSituationPrefixInput.value.trim() || DEFAULT_SETTINGS.pisSituationPrefix,
+    retentionTypeValue: elements.retentionTypeValueInput.value.trim() || DEFAULT_SETTINGS.retentionTypeValue,
+    retentionTypeLabel: elements.retentionTypeLabelInput.value.trim() || DEFAULT_SETTINGS.retentionTypeLabel,
+    regimeLabel: elements.regimeLabelInput.value.trim() || DEFAULT_SETTINGS.regimeLabel
+  };
+  await persistSettings();
+}
+
 function getAutoAdvanceValue() {
   return elements.autoAdvanceToggle.checked ? "yes" : "no";
+}
+
+function isNfseUrl(url) {
+  try {
+    const { hostname } = new URL(url || "");
+    return hostname === "nfse.gov.br" || hostname.endsWith(".nfse.gov.br");
+  } catch (_error) {
+    return false;
+  }
 }
 
 async function redirectActiveTabToPortal() {
@@ -177,8 +270,14 @@ async function redirectActiveTabToPortal() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id || tab.url?.startsWith(TARGET_URL)) return;
 
-  await chrome.tabs.update(tab.id, { url: TARGET_URL });
-  log("Aba redirecionada para o portal. Faça login manualmente antes de automatizar.");
+  if (isNfseUrl(tab.url)) {
+    await chrome.tabs.update(tab.id, { url: TARGET_URL });
+    log("Aba redirecionada para a tela de Pessoas. Faça login manualmente antes de automatizar.");
+    return;
+  }
+
+  await chrome.tabs.create({ url: TARGET_URL, active: true });
+  log("Portal aberto em uma nova aba. Faça login manualmente antes de automatizar.");
 }
 
 function renderPresetOptions() {
@@ -228,8 +327,8 @@ function clearForm() {
   elements.presetId.value = "";
   elements.nameInput.value = "";
   elements.cnpjInput.value = "";
-  elements.valueInput.value = "";
-  elements.descriptionInput.value = "";
+  elements.valueInput.value = settings.defaultValue || "";
+  elements.descriptionInput.value = settings.defaultDescription || DEFAULT_DESCRIPTION;
 }
 
 function openPresetForm(title) {
@@ -272,44 +371,167 @@ async function runAutomation(step) {
   }
 
   if (!tab.url?.startsWith(TARGET_URL)) {
-    await chrome.tabs.update(tab.id, { url: TARGET_URL });
-    log("Aba redirecionada para o portal. Faça login e execute novamente.");
+    if (isNfseUrl(tab.url)) {
+      await chrome.tabs.update(tab.id, { url: TARGET_URL });
+      log("Aba redirecionada para a tela de Pessoas. Faça login e execute novamente.");
+    } else {
+      await chrome.tabs.create({ url: TARGET_URL, active: true });
+      log("Portal aberto em uma nova aba. Faça login e execute novamente.");
+    }
     return;
   }
 
-  const payload = {
+  if (getAutoAdvanceValue() === "yes" && step !== "diagnose") {
+    await runAutoFlow(tab.id, preset, step);
+    return;
+  }
+
+  await runSingleAutomationStep(tab.id, preset, step);
+}
+
+function buildPayload(step, preset, autoAdvance = false) {
+  return {
     step,
-    autoAdvance: getAutoAdvanceValue() === "yes",
+    autoAdvance,
     client: {
       name: preset.name,
       cnpj: preset.cnpj,
-      value: normalizeMoney(elements.runValueInput.value || preset.value),
-      description: elements.runDescriptionInput.value.trim() || preset.description
-    }
+      value: normalizeMoney(elements.runValueInput.value || preset.value || settings.defaultValue),
+      description: elements.runDescriptionInput.value.trim() || preset.description || settings.defaultDescription
+    },
+    settings
   };
+}
 
+async function executeAutomationPayload(tabId, payload) {
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: "MAIN",
+    func: automateNfseStep,
+    args: [payload]
+  });
+  return result?.result;
+}
+
+async function runSingleAutomationStep(tabId, preset, step) {
+  const payload = buildPayload(step, preset, false);
   try {
+    if (!automationRunning && step !== "diagnose") {
+      setAutomationStatus("running", `Executando ${labelForStep(step)}`);
+    }
     log(`Executando etapa: ${labelForStep(step)}...`);
-    const [result] = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      world: "MAIN",
-      func: automateNfseStep,
-      args: [payload]
-    });
-
-    const response = result?.result;
+    const response = await executeAutomationPayload(tabId, payload);
     if (!response?.ok) {
+      setAutomationStatus("error", "Erro na automação");
       log(response?.message || "Automação não concluída.", "erro");
       if (response?.details?.length) {
         log(response.details.join("\n"), "erro");
       }
-      return;
+      return false;
     }
 
     log(response.message);
     if (response.details?.length) log(response.details.join("\n"));
+    if (!automationRunning && step !== "diagnose" && step !== "next") {
+      setAutomationStatus("done", `${labelForStep(step)} concluído`);
+    }
+    return true;
   } catch (error) {
+    setAutomationStatus("error", "Erro na automação");
     log(error?.message || String(error), "erro");
+    return false;
+  }
+}
+
+function nextStepForPanel(step) {
+  return {
+    people: "service",
+    service: "values",
+    values: "review"
+  }[step] || null;
+}
+
+function stepSequenceFrom(startStep) {
+  const order = ["people", "service", "values"];
+  const index = order.indexOf(startStep);
+  return index >= 0 ? order.slice(index) : [];
+}
+
+async function waitForPortalStep(tabId, step, timeout = 15000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeout) {
+    try {
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId },
+        world: "MAIN",
+        func: checkNfseStepReady,
+        args: [step]
+      });
+      if (result?.result) return true;
+    } catch (_error) {
+      // The tab may be between document loads; keep polling.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return false;
+}
+
+async function runAutoFlow(tabId, preset, startStep = "people") {
+  if (automationRunning) {
+    log("Auto já está em execução.");
+    return;
+  }
+
+  automationRunning = true;
+  let completed = false;
+  let failed = false;
+  setAutomationStatus("running", "Auto em execução");
+  try {
+    const sequence = stepSequenceFrom(startStep);
+    for (const currentStep of sequence) {
+      const ready = await waitForPortalStep(tabId, currentStep, currentStep === startStep ? 1000 : 15000);
+      if (!ready && currentStep !== startStep) {
+        log(`A etapa ${labelForStep(currentStep)} não carregou a tempo.`, "erro");
+        failed = true;
+        break;
+      }
+
+      const filled = await runSingleAutomationStep(tabId, preset, currentStep);
+      if (!filled) {
+        failed = true;
+        break;
+      }
+
+      const nextStep = nextStepForPanel(currentStep);
+      if (!nextStep) break;
+
+      const advanced = await runSingleAutomationStep(tabId, preset, "next");
+      if (!advanced) {
+        failed = true;
+        break;
+      }
+      if (nextStep === "review") {
+        log("Auto chegou à tela de revisão.");
+        elements.autoAdvanceToggle.checked = false;
+        await saveSettings();
+        completed = true;
+        break;
+      }
+
+      const loaded = await waitForPortalStep(tabId, nextStep, 15000);
+      if (!loaded) {
+        log(`A etapa ${labelForStep(nextStep)} não carregou a tempo.`, "erro");
+        failed = true;
+        break;
+      }
+    }
+  } finally {
+    automationRunning = false;
+    if (completed) {
+      setAutomationStatus("done", "Auto finalizado");
+    } else if (failed) {
+      setAutomationStatus("error", "Auto interrompido");
+    }
   }
 }
 
@@ -318,8 +540,30 @@ function labelForStep(step) {
     people: "Pessoas",
     service: "Serviço",
     values: "Valores",
+    next: "Avançar",
+    review: "Revisão",
     diagnose: "Diagnóstico"
   }[step] || step;
+}
+
+function checkNfseStepReady(step) {
+  const byId = (id) => document.getElementById(id);
+  const checks = {
+    people: () =>
+      byId("SimplesNacional_RegimeApuracaoTributosSN") ||
+      byId("SimplesNacional_RegimeApuracaoTributosSN_chosen") ||
+      byId("Tomador_CpfCnpj") ||
+      Boolean([...document.querySelectorAll("input")].find((input) => /data|competencia/i.test(input.id + input.name))),
+    service: () =>
+      byId("LocalPrestacao_CodigoMunicipioPrestacao") ||
+      byId("ServicoPrestado_CodigoTributacaoNacional") ||
+      byId("ServicoPrestado_Descricao"),
+    values: () =>
+      byId("Valores_ValorServico") ||
+      byId("ISSQN_HaRetencao") ||
+      byId("TributacaoFederal_PISCofins_SituacaoTributaria")
+  };
+  return Boolean((checks[step] || (() => true))());
 }
 
 function normalizeCnpj(value) {
@@ -347,6 +591,15 @@ function formatCurrency(value) {
   return `R$ ${normalizeMoney(value)}`;
 }
 
+function deriveSearchToken(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toLowerCase()
+    .slice(0, 4);
+}
+
 function log(message, type = "info") {
   const time = new Date().toLocaleTimeString("pt-BR", {
     hour: "2-digit",
@@ -354,13 +607,22 @@ function log(message, type = "info") {
     second: "2-digit"
   });
   const prefix = type === "erro" ? "ERRO" : "OK";
+  if (type === "erro") {
+    setAutomationStatus("error", "Erro na automação");
+  }
   elements.logOutput.textContent = `[${time}] ${prefix}: ${message}\n${elements.logOutput.textContent}`;
+}
+
+function setAutomationStatus(status, text) {
+  elements.statusIndicator.className = `status-indicator is-${status}`;
+  elements.statusText.textContent = text;
 }
 
 function automateNfseStep(payload) {
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const details = [];
   const errors = [];
+  const config = payload.settings || {};
 
   const normalize = (value) =>
     String(value ?? "")
@@ -369,6 +631,16 @@ function automateNfseStep(payload) {
       .replace(/\s+/g, " ")
       .trim()
       .toLowerCase();
+
+  const deriveSearchToken = (value) =>
+    String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .toLowerCase()
+      .slice(0, 4);
+
+  const deriveLeadingDigits = (value) => String(value ?? "").match(/\d+/)?.[0] || "";
 
   const visible = (element) => {
     if (!element) return false;
@@ -526,7 +798,7 @@ function automateNfseStep(payload) {
     element.dispatchEvent(new FocusEvent("blur", { bubbles: true, composed: true }));
     element.dispatchEvent(new FocusEvent("focusout", { bubbles: true, composed: true }));
     clickElement(document.body);
-    await sleep(800);
+    await sleep(100);
     return true;
   };
 
@@ -1277,7 +1549,7 @@ function automateNfseStep(payload) {
   const autocompleteControl = async (control, query, label, timeout = 9000) => {
     if (!control) return false;
     await searchSet(control, query);
-    await sleep(1400);
+    await sleep(300);
 
     const findOption = () =>
       [
@@ -1350,11 +1622,11 @@ function automateNfseStep(payload) {
     return false;
   };
 
-  const waitFor = async (finder, timeout = 4000) => {
+  const waitFor = async (finder, timeout = 4000, interval = 150) => {
     const startedAt = Date.now();
     let found = finder();
     while (!found && Date.now() - startedAt < timeout) {
-      await sleep(150);
+      await sleep(interval);
       found = finder();
     }
     return found;
@@ -1380,7 +1652,7 @@ function automateNfseStep(payload) {
 
     requireAction(
       await selectChosenById("SimplesNacional_RegimeApuracaoTributosSN_chosen", {
-        label: "Regime de apuração dos tributos federais e municipal pelo Simples Nacional",
+        label: config.regimeLabel || "Regime de apuração dos tributos federais e municipal pelo Simples Nacional",
         timeout: 2000
       }) ||
         await clickOptionLike(
@@ -1391,7 +1663,7 @@ function automateNfseStep(payload) {
               optionControls().find((item) => fieldText(item).includes("regime")),
             6000
           ),
-          "Regime de apuração dos tributos federais e municipal pelo Simples Nacional"
+          config.regimeLabel || "Regime de apuração dos tributos federais e municipal pelo Simples Nacional"
         ),
       "Regime de apuração do Simples Nacional selecionado."
     );
@@ -1420,22 +1692,28 @@ function automateNfseStep(payload) {
   };
 
   const fillService = async () => {
-    const taxCodeLabel = "01.08.01 - Planejamento, confecção, manutenção e atualização de páginas eletrônicas.";
-    const nbsLabel = "115023000 - Serviços de projeto e desenvolvimento de estruturas e conteúdo de páginas eletrônicas";
+    const municipalityExact = config.municipalityExact || "Natal/RN";
+    const municipalityQuery = deriveSearchToken(municipalityExact);
+    const municipalityTokens = municipalityExact.split(/[/-]/).map((item) => item.trim()).filter(Boolean);
+    const taxCodeLabel = config.taxCodeMatch || "01.08.01 - Planejamento, confecção, manutenção e atualização de páginas eletrônicas.";
+    const taxCodeQuery = deriveSearchToken(taxCodeLabel);
+    const nbsLabel = config.nbsLabel || "115023000 - Serviços de projeto e desenvolvimento de estruturas e conteúdo de páginas eletrônicas";
+    const nbsCode = deriveLeadingDigits(nbsLabel) || "115023000";
+    const nbsSearch = deriveSearchToken(nbsLabel);
 
-    const municipalitySelected = await clickTypeAndEnterAutocomplete("LocalPrestacao_CodigoMunicipioPrestacao", "natal", {
-      label: { exact: "Natal/RN", all: ["Natal", "RN"] },
+    const municipalitySelected = await clickTypeAndEnterAutocomplete("LocalPrestacao_CodigoMunicipioPrestacao", municipalityQuery, {
+      label: { exact: municipalityExact, all: municipalityTokens },
       waitBeforeEnter: 150,
       settleDelay: 350,
       resultTimeout: 2000
     }) ||
       await selectFirstAutocompleteWithKeyboard(
         "LocalPrestacao_CodigoMunicipioPrestacao",
-        "natal",
-        { exact: "Natal/RN", all: ["Natal", "RN"] },
+        municipalityQuery,
+        { exact: municipalityExact, all: municipalityTokens },
         { timeout: 2500, loadDelay: 500, settleDelay: 350 }
       ) ||
-      await autocompleteById("LocalPrestacao_CodigoMunicipioPrestacao", "natal", { all: ["Natal", "RN"] }, 3000);
+      await autocompleteById("LocalPrestacao_CodigoMunicipioPrestacao", municipalityQuery, { all: municipalityTokens }, 3000);
 
     if (!requireAction(
       municipalitySelected,
@@ -1446,7 +1724,7 @@ function automateNfseStep(payload) {
     }
     await sleep(500);
 
-    const taxCodeSelected = await clickTypeAndEnterAutocomplete("ServicoPrestado_CodigoTributacaoNacional", "0108", {
+    const taxCodeSelected = await clickTypeAndEnterAutocomplete("ServicoPrestado_CodigoTributacaoNacional", taxCodeQuery, {
       label: { all: ["01.08.01", "Planejamento"] },
       waitBeforeEnter: 200,
       settleDelay: 400,
@@ -1454,13 +1732,13 @@ function automateNfseStep(payload) {
     }) ||
       await selectFirstAutocompleteWithKeyboard(
         "ServicoPrestado_CodigoTributacaoNacional",
-        "0108",
+        taxCodeQuery,
         { all: ["01.08.01", "Planejamento"] },
         { timeout: 2000, loadDelay: 600, settleDelay: 400 }
       ) ||
       await autocompleteById(
         "ServicoPrestado_CodigoTributacaoNacional",
-        "0108",
+        taxCodeQuery,
         { all: ["01.08.01", "Planejamento"] },
         3000
       );
@@ -1485,17 +1763,17 @@ function automateNfseStep(payload) {
       findControl(["descricao"], { tag: "textarea" }) ||
       [...document.querySelectorAll("textarea")].filter(writable).find((textarea) => fieldText(textarea).includes("servico"));
     requireAction(nativeSet(descriptionField, payload.client.description), "Descrição do serviço preenchida.");
-    await sleep(500);
 
     const nbsField = await waitFor(
       () =>
         findControl(["item da nbs"], { excludeTypes: ["radio", "checkbox"] }) ||
         findControl(["nbs"], { excludeTypes: ["radio", "checkbox"] }) ||
         optionControls().find((item) => fieldText(item).includes("nbs")),
-      7000
+      1000,
+      50
     );
     requireAction(
-      await autocompleteControl(nbsField, "115023000", { all: ["115023000"] }, 9000) ||
+      await autocompleteControl(nbsField, nbsSearch, { all: [nbsCode] }, 1000) ||
         forceChoiceByIds(
         [
           "ServicoPrestado_CodigoNBS",
@@ -1507,16 +1785,16 @@ function automateNfseStep(payload) {
           "ServicoPrestado_NBS",
           "ServicoPrestado_Nbs"
         ],
-        "115023000",
+        nbsCode,
         nbsLabel
       ) ||
         await clickOptionLike(
           nbsField,
           nbsLabel,
-          "115023000",
-          9000
+          nbsSearch,
+          1000
         ),
-      "Item da NBS 115023000 selecionado."
+      `Item da NBS ${nbsCode} selecionado.`
     );
     await scrollToPageEnd();
   };
@@ -1528,17 +1806,17 @@ function automateNfseStep(payload) {
       findControl(["valor do servico"]) ||
       [...document.querySelectorAll("input")].filter(writable).find((input) => fieldText(input).includes("valor"));
     requireAction(await keyboardSetAndCommit(valueField, moneyToPortalDigits(payload.client.value)), "Valor do serviço preenchido e confirmado.");
-    await waitFor(() => {
+    const retentionRadio = await waitFor(() => {
       const exact = byId("ISSQN_HaRetencao");
       const radios = [
         ...(exact?.matches?.("input[type='radio']") ? [exact] : []),
         ...document.querySelectorAll(`input[type='radio'][id^="ISSQN_HaRetencao"], input[type='radio'][name="ISSQN_HaRetencao"]`)
       ];
       return radios.find((radio) => visible(radio) && !radio.disabled && radio.getAttribute("aria-disabled") !== "true");
-    }, 12000);
-    await sleep(250);
+    }, 2000, 50);
 
-    const retentionSelected = await clickFirstEnabledRadioById("ISSQN_HaRetencao", 12000) ||
+    const retentionSelected = nativeCheck(retentionRadio) ||
+        await clickFirstEnabledRadioById("ISSQN_HaRetencao", 2000) ||
         clickRadioByText(["retencao do issqn"], ["nao"]) ||
         clickRadioByText(["tomador", "intermediario"], ["nao"]);
     requireAction(
@@ -1546,10 +1824,10 @@ function automateNfseStep(payload) {
       "Retenção do ISSQN marcada como Não."
     );
     await sleep(500);
-    await waitForEnabledControlById("TributacaoFederal_PISCofins_SituacaoTributaria", 12000);
+    await waitForEnabledControlById("TributacaoFederal_PISCofins_SituacaoTributaria", 2000);
 
     requireAction(
-      selectNativeByTextPrefix("TributacaoFederal_PISCofins_SituacaoTributaria", "00") ||
+      selectNativeByTextPrefix("TributacaoFederal_PISCofins_SituacaoTributaria", config.pisSituationPrefix || "00") ||
         selectNativeById("TributacaoFederal_PISCofins_SituacaoTributaria", "0") ||
         forceChoiceById("TributacaoFederal_PISCofins_SituacaoTributaria", "0", "00 - Nenhum") ||
         await clickOptionLike(
@@ -1561,16 +1839,16 @@ function automateNfseStep(payload) {
       "Situação tributária PIS/COFINS definida como 00 - Nenhum."
     );
     await sleep(400);
-    await waitForEnabledControlById("TributacaoFederal_PISCofins_TipoRetencao", 12000);
+    await waitForEnabledControlById("TributacaoFederal_PISCofins_TipoRetencao", 2000);
 
     requireAction(
-      selectNativeById("TributacaoFederal_PISCofins_TipoRetencao", "0") ||
-        forceChoiceById("TributacaoFederal_PISCofins_TipoRetencao", "0", "PIS/COFINS/CSLL Não Retidos") ||
+      selectNativeById("TributacaoFederal_PISCofins_TipoRetencao", config.retentionTypeValue || "0") ||
+        forceChoiceById("TributacaoFederal_PISCofins_TipoRetencao", config.retentionTypeValue || "0", config.retentionTypeLabel || "PIS/COFINS/CSLL Não Retidos") ||
         await clickOptionLike(
           findControl(["tipo de retencao"], { excludeTypes: ["radio", "checkbox"] }) ||
             findByPlaceholderOrValue(["tipo de retencao"]) ||
             optionControls().find((item) => fieldText(item).includes("tipo") && fieldText(item).includes("retencao")),
-          "PIS/COFINS/CSLL Não Retidos",
+          config.retentionTypeLabel || "PIS/COFINS/CSLL Não Retidos",
           "PIS/COFINS/CSLL",
           7000
         ),
@@ -1721,8 +1999,17 @@ function automateNfseStep(payload) {
   };
 
   return (async () => {
+    if (payload.step === "next") {
+      const clicked = await clickNextButton();
+      if (!clicked) {
+        errors.push("Botão Avançar não localizado.");
+      } else {
+        details.push("Botão Avançar acionado.");
+      }
+    }
+
     let currentStep = payload.step;
-    await fillStep(currentStep);
+    if (payload.step !== "next") await fillStep(currentStep);
 
     while (payload.autoAdvance && !errors.length && nextStepFor(currentStep)) {
       const nextStep = nextStepFor(currentStep);

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "AutoNF NFS-e",
   "description": "Automatiza etapas de preenchimento da NFS-e no Emissor Nacional.",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "permissions": [
     "activeTab",
     "scripting",

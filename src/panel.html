@@ -27,6 +27,7 @@
           <div class="toolbar">
             <button id="newPresetBtn" class="secondary icon-only" title="Novo cliente" aria-label="Novo cliente">+</button>
             <button id="editPresetBtn" type="button" class="secondary icon-only" title="Editar cliente" aria-label="Editar cliente">✎</button>
+            <button id="settingsBtn" type="button" class="secondary icon-only" title="Configurações" aria-label="Configurações">⚙</button>
           </div>
         </div>
         <label class="field compact-field">
@@ -77,6 +78,57 @@
         </div>
       </form>
 
+      <form id="settingsForm" class="section form is-hidden">
+        <div class="section-head">
+          <h2>Configurações</h2>
+          <button type="button" id="closeSettingsBtn" class="ghost-button">Fechar</button>
+        </div>
+        <div class="form-grid">
+          <label class="field">
+            <span>Valor padrão (R$)</span>
+            <input id="defaultValueInput" inputmode="decimal">
+          </label>
+          <label class="field">
+            <span>Município</span>
+            <input id="municipalityExactInput" autocomplete="off">
+          </label>
+        </div>
+        <label class="field">
+          <span>Código de Tributação Nacional</span>
+          <input id="taxCodeMatchInput" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>PIS/COFINS</span>
+          <input id="pisSituationPrefixInput" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>NBS</span>
+          <input id="nbsLabelInput" autocomplete="off">
+        </label>
+        <div class="form-grid">
+          <label class="field">
+            <span>Valor tipo retenção</span>
+            <input id="retentionTypeValueInput" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>Tipo retenção</span>
+            <input id="retentionTypeLabelInput" autocomplete="off">
+          </label>
+        </div>
+        <label class="field">
+          <span>Regime de apuração</span>
+          <input id="regimeLabelInput" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>Descrição padrão</span>
+          <textarea id="defaultDescriptionInput" rows="3"></textarea>
+        </label>
+        <div class="button-row">
+          <button type="submit" class="primary">Salvar</button>
+          <button type="button" id="resetSettingsBtn" class="secondary">Restaurar padrões</button>
+        </div>
+      </form>
+
       <section class="section">
         <div class="section-head note-head">
           <h2>Nota</h2>
@@ -106,7 +158,7 @@
         </label>
         <label class="field">
           <span>Descrição desta nota</span>
-          <textarea id="runDescriptionInput" rows="4"></textarea>
+          <textarea id="runDescriptionInput" rows="3"></textarea>
         </label>
       </section>
 
@@ -114,12 +166,18 @@
         <div class="section-head">
           <h2>Status</h2>
           <div class="toolbar">
-            <button id="diagnoseBtn" type="button" class="ghost-button status-action">Diagnóstico</button>
-            <button id="clearLogBtn" class="ghost-button status-action">Limpar</button>
+            <div id="statusIndicator" class="status-indicator is-idle" aria-live="polite">
+              <span aria-hidden="true"></span>
+              <strong id="statusText">Pronto</strong>
+            </div>
             <button id="toggleStatusBtn" type="button" class="chevron-button" title="Expandir status" aria-label="Expandir status"></button>
           </div>
         </div>
         <pre id="logOutput" aria-live="polite"></pre>
+        <div class="status-actions">
+          <button id="diagnoseBtn" type="button" class="ghost-button status-action">Diagnóstico</button>
+          <button id="clearLogBtn" class="ghost-button status-action">Limpar</button>
+        </div>
       </section>
 
       <footer class="footer">

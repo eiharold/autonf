@@ -1,4 +1,22 @@
-const TARGET_URL = "https://www.nfse.gov.br/EmissorNacional";
+const TARGET_URL = "https://www.nfse.gov.br/EmissorNacional/DPS/Pessoas";
+
+function isNfseUrl(url) {
+  try {
+    const { hostname } = new URL(url || "");
+    return hostname === "nfse.gov.br" || hostname.endsWith(".nfse.gov.br");
+  } catch (_error) {
+    return false;
+  }
+}
+
+async function openPortal(tab) {
+  if (tab?.id && isNfseUrl(tab.url)) {
+    await chrome.tabs.update(tab.id, { url: TARGET_URL });
+    return;
+  }
+
+  await chrome.tabs.create({ url: TARGET_URL, active: true });
+}
 
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 
@@ -7,11 +25,7 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.action.onClicked.addListener(async (tab) => {
-  if (!tab?.id) return;
-
-  if (!tab.url?.startsWith(TARGET_URL)) {
-    await chrome.tabs.update(tab.id, { url: TARGET_URL });
-  }
+  await openPortal(tab);
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -23,7 +37,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       return;
     }
 
-    await chrome.tabs.update(tab.id, { url: TARGET_URL });
+    await openPortal(tab);
     sendResponse({ ok: true });
   });
 
