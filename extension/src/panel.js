@@ -1,9 +1,9 @@
 const STORAGE_KEY = "autonf.presets.v1";
 const SETTINGS_KEY = "autonf.settings.v1";
 const TARGET_URL = "https://www.nfse.gov.br/EmissorNacional/DPS/Pessoas";
+const EMITIDAS_URL = "https://www.nfse.gov.br/EmissorNacional/Notas/Emitidas";
 const DEFAULT_DESCRIPTION = "Suporte, instrução, desenvolvimento e/ou manutenção em serviços relacionados a webdesign.";
 const DEFAULT_SETTINGS = {
-  autoAdvance: "no",
   defaultValue: "",
   defaultDescription: DEFAULT_DESCRIPTION,
   municipalityExact: "Natal/RN",
@@ -26,12 +26,10 @@ const elements = {
   descriptionInput: document.querySelector("#descriptionInput"),
   newPresetBtn: document.querySelector("#newPresetBtn"),
   editPresetBtn: document.querySelector("#editPresetBtn"),
-  settingsBtn: document.querySelector("#settingsBtn"),
   closePresetFormBtn: document.querySelector("#closePresetFormBtn"),
   presetFormTitle: document.querySelector("#presetFormTitle"),
   deletePresetBtn: document.querySelector("#deletePresetBtn"),
   settingsForm: document.querySelector("#settingsForm"),
-  closeSettingsBtn: document.querySelector("#closeSettingsBtn"),
   resetSettingsBtn: document.querySelector("#resetSettingsBtn"),
   defaultValueInput: document.querySelector("#defaultValueInput"),
   defaultDescriptionInput: document.querySelector("#defaultDescriptionInput"),
@@ -47,24 +45,48 @@ const elements = {
   selectedValue: document.querySelector("#selectedValue"),
   runDescriptionInput: document.querySelector("#runDescriptionInput"),
   runValueInput: document.querySelector("#runValueInput"),
-  autoAdvanceToggle: document.querySelector("#autoAdvanceToggle"),
+  customToggle: document.querySelector("#customToggle"),
+  customFields: document.querySelector("#customFields"),
   fillPeopleBtn: document.querySelector("#fillPeopleBtn"),
   fillServiceBtn: document.querySelector("#fillServiceBtn"),
   fillValuesBtn: document.querySelector("#fillValuesBtn"),
+  emitBtn: document.querySelector("#emitBtn"),
   diagnoseBtn: document.querySelector("#diagnoseBtn"),
   openPortalBtn: document.querySelector("#openPortalBtn"),
   clearLogBtn: document.querySelector("#clearLogBtn"),
+  copyLogBtn: document.querySelector("#copyLogBtn"),
   statusSection: document.querySelector("#statusSection"),
   toggleStatusBtn: document.querySelector("#toggleStatusBtn"),
   statusIndicator: document.querySelector("#statusIndicator"),
   statusText: document.querySelector("#statusText"),
   currentYear: document.querySelector("#currentYear"),
-  logOutput: document.querySelector("#logOutput")
+  logOutput: document.querySelector("#logOutput"),
+  tabButtons: document.querySelectorAll(".tab"),
+  tabPanels: document.querySelectorAll(".tab-panel"),
+  exportMonth: document.querySelector("#exportMonth"),
+  exportYear: document.querySelector("#exportYear"),
+  fillDatesBtn: document.querySelector("#fillDatesBtn"),
+  fetchNfBtn: document.querySelector("#fetchNfBtn"),
+  exportResults: document.querySelector("#exportResults"),
+  exportSummary: document.querySelector("#exportSummary"),
+  exportProgressBar: document.querySelector("#exportProgressBar"),
+  exportProgressText: document.querySelector("#exportProgressText"),
+  exportChecklist: document.querySelector("#exportChecklist"),
+  copyListBtn: document.querySelector("#copyListBtn"),
+  resetChecklistBtn: document.querySelector("#resetChecklistBtn"),
+  exportClientsBtn: document.querySelector("#exportClientsBtn"),
+  importClientsBtn: document.querySelector("#importClientsBtn"),
+  importClientsInput: document.querySelector("#importClientsInput"),
+  clientsBackupMsg: document.querySelector("#clientsBackupMsg")
 };
 
 let presets = [];
 let automationRunning = false;
 let settings = { ...DEFAULT_SETTINGS };
+
+const STEP_ORDER = ["people", "service", "values"];
+const stepState = { people: true, service: true, values: true };
+let lastFetch = null;
 
 init();
 
@@ -75,6 +97,11 @@ async function init() {
   renderPresetOptions();
   selectPreset(presets[0]?.id ?? "");
   bindEvents();
+  renderStepToggles();
+  populateExportControls();
+  if (hasChromeExtensionApi && chrome.downloads?.onCreated) {
+    chrome.downloads.onCreated.addListener(onDownloadCreated);
+  }
   setAutomationStatus("idle", "Pronto");
   await redirectActiveTabToPortal();
   log("Painel pronto. Faça login manualmente no portal antes de automatizar.");
@@ -90,15 +117,9 @@ function bindEvents() {
     if (!getSelectedPreset()) return;
     openPresetForm("Editar cliente");
   });
-  elements.settingsBtn.addEventListener("click", () => {
-    elements.presetForm.classList.add("is-hidden");
-    elements.settingsForm.classList.toggle("is-hidden");
-  });
   elements.closePresetFormBtn.addEventListener("click", closePresetForm);
-  elements.closeSettingsBtn.addEventListener("click", () => elements.settingsForm.classList.add("is-hidden"));
-  elements.autoAdvanceToggle.addEventListener("change", async () => {
-    await saveSettings();
-    if (elements.autoAdvanceToggle.checked) runAutomation("people");
+  elements.tabButtons.forEach((btn) => {
+    btn.addEventListener("click", () => switchTab(btn.dataset.tab));
   });
   elements.toggleStatusBtn.addEventListener("click", () => {
     const collapsed = elements.statusSection.classList.toggle("is-collapsed");
@@ -108,6 +129,19 @@ function bindEvents() {
   });
   elements.clearLogBtn.addEventListener("click", () => {
     elements.logOutput.textContent = "";
+  });
+  elements.copyLogBtn.addEventListener("click", async () => {
+    const text = elements.logOutput.textContent || "";
+    if (!text.trim()) {
+      log("Nada no log para copiar.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      log("Log copiado.");
+    } catch (error) {
+      log("Não foi possível copiar: " + (error?.message || error), "erro");
+    }
   });
 
   elements.openPortalBtn.addEventListener("click", async () => {
@@ -149,12 +183,11 @@ function bindEvents() {
   elements.settingsForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     await saveSettingsFromForm();
-    elements.settingsForm.classList.add("is-hidden");
     log("Configurações salvas.");
   });
 
   elements.resetSettingsBtn.addEventListener("click", async () => {
-    settings = { ...DEFAULT_SETTINGS, autoAdvance: getAutoAdvanceValue() };
+    settings = { ...DEFAULT_SETTINGS };
     renderSettingsForm();
     await persistSettings();
     log("Configurações restauradas para os padrões.");
@@ -173,9 +206,40 @@ function bindEvents() {
     log(removed ? `Cliente excluído: ${removed.name}.` : "Cliente excluído.");
   });
 
-  elements.fillPeopleBtn.addEventListener("click", () => runAutomation("people"));
-  elements.fillServiceBtn.addEventListener("click", () => runAutomation("service"));
-  elements.fillValuesBtn.addEventListener("click", () => runAutomation("values"));
+  elements.fillPeopleBtn.addEventListener("click", () => setStepLimit("people"));
+  elements.fillServiceBtn.addEventListener("click", () => setStepLimit("service"));
+  elements.fillValuesBtn.addEventListener("click", () => setStepLimit("values"));
+  elements.emitBtn.addEventListener("click", runEmit);
+  elements.customToggle.addEventListener("change", () => {
+    elements.customFields.classList.toggle("is-hidden", !elements.customToggle.checked);
+  });
+  elements.fillDatesBtn.addEventListener("click", runFillDates);
+  elements.fetchNfBtn.addEventListener("click", runFetchNf);
+  elements.copyListBtn.addEventListener("click", async () => {
+    if (!lastFetch?.listText) {
+      log("Busque as NFs do mês antes de copiar a lista.", "erro");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(lastFetch.listText);
+      log("Lista copiada.");
+    } catch (error) {
+      log("Não foi possível copiar: " + (error?.message || error), "erro");
+    }
+  });
+  elements.resetChecklistBtn.addEventListener("click", () => {
+    if (!lastFetch?.items?.length) return;
+    lastFetch.items.forEach((item) => {
+      item.done = false;
+    });
+    updateExportProgress();
+    log("Checklist reiniciada.");
+  });
+  elements.exportClientsBtn.addEventListener("click", exportClients);
+  elements.importClientsBtn.addEventListener("click", () => elements.importClientsInput.click());
+  elements.importClientsInput.addEventListener("change", (event) => {
+    importClientsFromFile(event.target.files?.[0]);
+  });
   elements.diagnoseBtn.addEventListener("click", () => runAutomation("diagnose"));
 }
 
@@ -197,20 +261,82 @@ async function savePresets(nextPresets) {
   await chrome.storage.local.set({ [STORAGE_KEY]: nextPresets });
 }
 
+function exportClients() {
+  if (!presets.length) {
+    elements.clientsBackupMsg.textContent = "Nenhum cliente para exportar.";
+    log("Nenhum cliente para exportar.", "erro");
+    return;
+  }
+  const blob = new Blob([JSON.stringify(presets, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "clientes-autonf.json";
+  link.click();
+  URL.revokeObjectURL(url);
+  const msg = `✓ ${presets.length} cliente(s) exportado(s) para clientes-autonf.json.`;
+  elements.clientsBackupMsg.textContent = msg;
+  log(msg);
+}
+
+async function importClientsFromFile(file) {
+  if (!file) return;
+  try {
+    const parsed = JSON.parse(await file.text());
+    const incoming = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.clients) ? parsed.clients : null;
+    if (!incoming) {
+      elements.clientsBackupMsg.textContent = "Arquivo inválido: esperado um array de clientes (JSON).";
+      log("Arquivo inválido: esperado um array de clientes (JSON).", "erro");
+      return;
+    }
+
+    let added = 0;
+    let updated = 0;
+    let skipped = 0;
+    for (const raw of incoming) {
+      const name = (raw.name || raw.nome || "").trim();
+      const cnpj = normalizeCnpj(raw.cnpj || "");
+      const value = normalizeMoney(raw.value ?? raw.valor ?? "");
+      const description = (raw.description || raw.descricao || "").trim() || DEFAULT_DESCRIPTION;
+      if (!name || !cnpj) {
+        skipped += 1;
+        continue;
+      }
+      const existing = presets.find((preset) => normalizeCnpj(preset.cnpj) === cnpj);
+      if (existing) {
+        existing.name = name;
+        existing.value = value || existing.value;
+        existing.description = description;
+        updated += 1;
+      } else {
+        presets.push({ id: crypto.randomUUID(), name, cnpj, value, description });
+        added += 1;
+      }
+    }
+
+    presets.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+    await savePresets(presets);
+    renderPresetOptions();
+    selectPreset(presets[0]?.id ?? "");
+    const skip = skipped ? `, ${skipped} ignorado(s) (sem nome/CNPJ)` : "";
+    const msg = `✓ Importação: ${added} novo(s), ${updated} atualizado(s)${skip}.`;
+    elements.clientsBackupMsg.textContent = msg;
+    log(msg);
+  } catch (error) {
+    elements.clientsBackupMsg.textContent = "Falha ao importar: " + (error?.message || error);
+    log("Falha ao importar: " + (error?.message || error), "erro");
+  } finally {
+    elements.importClientsInput.value = "";
+  }
+}
+
 async function loadSettings() {
   const storedSettings = hasChromeExtensionApi
     ? (await chrome.storage.local.get(SETTINGS_KEY))[SETTINGS_KEY] || {}
     : JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
 
   settings = { ...DEFAULT_SETTINGS, ...storedSettings };
-  const autoAdvanceValue = settings.autoAdvance === "yes" ? "yes" : "no";
-  elements.autoAdvanceToggle.checked = autoAdvanceValue === "yes";
   renderSettingsForm();
-}
-
-async function saveSettings() {
-  settings = { ...settings, autoAdvance: getAutoAdvanceValue() };
-  await persistSettings();
 }
 
 async function persistSettings() {
@@ -237,7 +363,6 @@ function renderSettingsForm() {
 async function saveSettingsFromForm() {
   settings = {
     ...settings,
-    autoAdvance: getAutoAdvanceValue(),
     defaultValue: normalizeMoney(elements.defaultValueInput.value),
     defaultDescription: elements.defaultDescriptionInput.value.trim() || DEFAULT_SETTINGS.defaultDescription,
     municipalityExact: elements.municipalityExactInput.value.trim() || DEFAULT_SETTINGS.municipalityExact,
@@ -249,10 +374,6 @@ async function saveSettingsFromForm() {
     regimeLabel: elements.regimeLabelInput.value.trim() || DEFAULT_SETTINGS.regimeLabel
   };
   await persistSettings();
-}
-
-function getAutoAdvanceValue() {
-  return elements.autoAdvanceToggle.checked ? "yes" : "no";
 }
 
 function isNfseUrl(url) {
@@ -341,15 +462,341 @@ function closePresetForm() {
   elements.presetForm.classList.add("is-hidden");
 }
 
+function switchTab(name) {
+  elements.tabButtons.forEach((btn) => {
+    const active = btn.dataset.tab === name;
+    btn.classList.toggle("is-active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  elements.tabPanels.forEach((panel) => {
+    panel.classList.toggle("is-active", panel.dataset.panel === name);
+  });
+}
+
 function setActionState(enabled) {
-  elements.fillPeopleBtn.disabled = !enabled;
-  elements.fillServiceBtn.disabled = !enabled;
-  elements.fillValuesBtn.disabled = !enabled;
+  elements.emitBtn.disabled = !enabled;
   elements.diagnoseBtn.disabled = !enabled;
 }
 
 function getSelectedPreset() {
   return presets.find((preset) => preset.id === elements.presetSelect.value);
+}
+
+function setStepLimit(step) {
+  const idx = STEP_ORDER.indexOf(step);
+  if (idx < 0) return;
+
+  // Comportamento "vai até aqui": marca as etapas até a clicada (inclusive) e
+  // desmarca as posteriores. Pessoas (índice 0) fica sempre marcada.
+  STEP_ORDER.forEach((s, i) => {
+    stepState[s] = i <= idx;
+  });
+  renderStepToggles();
+}
+
+function renderStepToggles() {
+  const map = {
+    people: elements.fillPeopleBtn,
+    service: elements.fillServiceBtn,
+    values: elements.fillValuesBtn
+  };
+  STEP_ORDER.forEach((s) => {
+    const btn = map[s];
+    if (!btn) return;
+    btn.classList.toggle("is-active", stepState[s]);
+    btn.setAttribute("aria-pressed", stepState[s] ? "true" : "false");
+  });
+}
+
+function getEnabledSteps() {
+  return STEP_ORDER.filter((s) => stepState[s]);
+}
+
+async function waitForTabComplete(tabId, timeout = 15000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeout) {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (tab.status === "complete" && tab.url?.startsWith(EMITIDAS_URL)) return true;
+    } catch (_error) {
+      // aba em transição entre carregamentos
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return false;
+}
+
+function populateExportControls() {
+  const months = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+  ];
+  const now = new Date();
+  elements.exportMonth.replaceChildren();
+  months.forEach((label, i) => {
+    const option = new Option(label, String(i + 1));
+    if (i === now.getMonth()) option.selected = true;
+    elements.exportMonth.append(option);
+  });
+  elements.exportYear.value = String(now.getFullYear());
+}
+
+// Fase 4 (descoberta): roda o inspetor na tela de NFs emitidas e despeja a
+// estrutura no log, para mapear filtro de data, tabela e links de XML.
+// Será substituído pela busca/cópia/download reais.
+async function runFetchNf() {
+  if (!hasChromeExtensionApi) {
+    log("A exportação só roda quando a pasta está carregada como extensão no Chrome.", "erro");
+    return;
+  }
+
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) {
+    log("Nenhuma aba ativa encontrada.", "erro");
+    return;
+  }
+
+  if (!isNfseUrl(tab.url)) {
+    await chrome.tabs.create({ url: EMITIDAS_URL, active: true });
+    log("Abri a tela de NFs emitidas. Faça login e clique em Buscar novamente.");
+    return;
+  }
+
+  if (!tab.url.startsWith(EMITIDAS_URL)) {
+    await chrome.tabs.update(tab.id, { url: EMITIDAS_URL });
+    log("Indo para a tela de NFs emitidas...");
+    if (!(await waitForTabComplete(tab.id))) {
+      log("A tela de NFs emitidas não carregou a tempo. Tente novamente.", "erro");
+      return;
+    }
+    log("Ajuste o filtro de data do mês na página e clique em Buscar.");
+    return;
+  }
+
+  const month = Number(elements.exportMonth.value);
+  const year = Number(elements.exportYear.value);
+  if (!month || String(year).length !== 4) {
+    log("Selecione um mês e um ano válidos.", "erro");
+    return;
+  }
+  const pad = (n) => String(n).padStart(2, "0");
+
+  // Leitura PASSIVA: não enviamos o filtro (evita o gatilho antibot/captcha do
+  // portal). Você filtra o mês na página; aqui só lemos o que está exibido.
+  setAutomationStatus("running", "Lendo NFs");
+  try {
+    const [readRes] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      world: "MAIN",
+      func: readIssuedNotes
+    });
+    const data = readRes?.result || null;
+    if (!data) {
+      lastFetch = null;
+      renderExportResults(null);
+      setAutomationStatus("error", "Nada lido");
+      log("Não consegui ler a lista. A tela de NFs emitidas está aberta e filtrada?", "erro");
+      return;
+    }
+
+    // Garante o mês pela coluna Competência (MM/AAAA), não pelo filtro do site.
+    const competIndex = data.columns.indexOf("Competência");
+    const matchesMonth = (cell) => {
+      const found = (cell || "").match(/(\d{1,2})\/(\d{4})/);
+      return Boolean(found) && Number(found[1]) === month && Number(found[2]) === year;
+    };
+    const matched = competIndex >= 0 ? data.rows.filter((row) => matchesMonth(row.cells[competIndex])) : data.rows;
+    const dropped = data.rows.length - matched.length;
+
+    const monthLabel = elements.exportMonth.options[elements.exportMonth.selectedIndex]?.text || pad(month);
+    data.label = `${monthLabel}/${year}`;
+    data.items = matched.map((row) => ({
+      chave: row.xmlHref ? row.xmlHref.split("/").filter(Boolean).pop() : null,
+      label: [row.cells[1], row.cells[2], row.cells[4]].filter(Boolean).join(" · "),
+      done: false
+    }));
+    data.listText = [
+      `NFs emitidas — ${data.label} (${matched.length})`,
+      data.columns.join(" | "),
+      ...matched.map((row) => row.cells.join(" | "))
+    ].join("\n");
+    lastFetch = data;
+
+    renderExportResults(data);
+    setAutomationStatus("done", "Lista pronta");
+    if (dropped > 0) {
+      log(`${dropped} nota(s) fora da competência ${pad(month)}/${year} foram ignoradas.`);
+    }
+    const missing = data.items.filter((item) => !item.chave).length;
+    if (missing > 0) {
+      log(`Atenção: ${missing} nota(s) sem link de XML detectado — o progresso delas não vai marcar sozinho.`, "erro");
+    }
+  } catch (error) {
+    setAutomationStatus("error", "Erro na leitura");
+    log(error?.message || String(error), "erro");
+  }
+}
+
+async function runFillDates() {
+  if (!hasChromeExtensionApi) {
+    log("Só roda quando a pasta está carregada como extensão no Chrome.", "erro");
+    return;
+  }
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) {
+    log("Nenhuma aba ativa encontrada.", "erro");
+    return;
+  }
+  if (!isNfseUrl(tab.url)) {
+    await chrome.tabs.create({ url: EMITIDAS_URL, active: true });
+    log("Abri a tela de NFs emitidas. Faça login e clique em Preencher datas novamente.");
+    return;
+  }
+  if (!tab.url.startsWith(EMITIDAS_URL)) {
+    await chrome.tabs.update(tab.id, { url: EMITIDAS_URL });
+    log("Indo para a tela de NFs emitidas...");
+    if (!(await waitForTabComplete(tab.id))) {
+      log("A tela de NFs emitidas não carregou a tempo. Tente novamente.", "erro");
+      return;
+    }
+  }
+  const month = Number(elements.exportMonth.value);
+  const year = Number(elements.exportYear.value);
+  if (!month || String(year).length !== 4) {
+    log("Selecione um mês e um ano válidos.", "erro");
+    return;
+  }
+  const pad = (n) => String(n).padStart(2, "0");
+  const lastDay = new Date(year, month, 0).getDate();
+  const dateStart = `01/${pad(month)}/${year}`;
+  const dateEnd = `${pad(lastDay)}/${pad(month)}/${year}`;
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      world: "MAIN",
+      func: fillDateFields,
+      args: [dateStart, dateEnd]
+    });
+    if (res?.result?.ok) {
+      log(`Datas preenchidas: ${dateStart} a ${dateEnd}. Clique em "Filtrar" na página e depois em Buscar.`);
+    } else {
+      log("Campos de data não encontrados. Você está na tela de NFs emitidas?", "erro");
+    }
+  } catch (error) {
+    log(error?.message || String(error), "erro");
+  }
+}
+
+function fillDateFields(dateInicio, dateFim) {
+  const setValue = (el, value) => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+    setter.call(el, value);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    el.dispatchEvent(new Event("blur", { bubbles: true }));
+  };
+  const inicio = document.getElementById("datainicio");
+  const fim = document.getElementById("datafim");
+  if (!inicio || !fim) return { ok: false };
+  setValue(inicio, dateInicio);
+  setValue(fim, dateFim);
+  return { ok: true };
+}
+
+function readIssuedNotes() {
+  const table = document.querySelector("table.table-striped") || document.querySelector("table");
+  const rows = [];
+  if (table) {
+    table.querySelectorAll("tbody tr").forEach((tr) => {
+      const cells = [...tr.querySelectorAll("td")].map((td) => td.textContent.trim().replace(/\s+/g, " "));
+      if (!cells.length) return;
+      const xmlLink = tr.querySelector('a[href*="/Download/NFSe/"]');
+      rows.push({ cells: cells.slice(0, 6), xmlHref: xmlLink ? xmlLink.getAttribute("href") : null });
+    });
+  }
+  return {
+    url: location.href,
+    columns: ["Geração", "Emitida para", "Competência", "Município Emissor", "Preço Serviço (R$)", "Situação"],
+    rows
+  };
+}
+
+function renderExportResults(data) {
+  if (!data) {
+    elements.exportResults.classList.add("is-hidden");
+    return;
+  }
+  const items = data.items || [];
+  elements.exportSummary.textContent = `${items.length} nota(s) — ${data.label}. Lista abaixo:`;
+
+  elements.exportChecklist.replaceChildren();
+  items.forEach((item) => {
+    const li = document.createElement("li");
+    li.className = "checklist-item" + (item.done ? " is-done" : "");
+    li.dataset.chave = item.chave || "";
+    const dot = document.createElement("span");
+    dot.className = "check-dot";
+    const text = document.createElement("span");
+    text.textContent = item.label || item.chave || "(sem dados)";
+    li.append(dot, text);
+    elements.exportChecklist.append(li);
+  });
+
+  elements.copyListBtn.disabled = items.length === 0;
+  elements.exportResults.classList.remove("is-hidden");
+  updateExportProgress();
+  log(`Lista pronta: ${items.length} nota(s) para ${data.label}.`);
+}
+
+function updateExportProgress() {
+  const items = lastFetch?.items || [];
+  const done = items.filter((item) => item.done).length;
+  const pct = items.length ? Math.round((done / items.length) * 100) : 0;
+  elements.exportProgressBar.style.width = pct + "%";
+  elements.exportProgressText.textContent = `${done}/${items.length} XML baixados`;
+  [...elements.exportChecklist.children].forEach((li) => {
+    const item = items.find((it) => (it.chave || "") === li.dataset.chave);
+    li.classList.toggle("is-done", Boolean(item?.done));
+  });
+}
+
+function onDownloadCreated(downloadItem) {
+  const items = lastFetch?.items;
+  if (!items?.length) return;
+  const hay = [downloadItem.url, downloadItem.finalUrl, downloadItem.filename].filter(Boolean).join(" ");
+  let chave = (hay.match(/\/Download\/NFSe\/(\d+)/) || [])[1];
+  if (!chave) {
+    chave = items.find((item) => item.chave && hay.includes(item.chave))?.chave;
+  }
+  if (!chave) return;
+  const target = items.find((item) => item.chave === chave);
+  if (target && !target.done) {
+    target.done = true;
+    updateExportProgress();
+    const done = items.filter((item) => item.done).length;
+    log(`XML baixado (${done}/${items.length}).`);
+  }
+}
+
+async function getPortalTabId() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) {
+    log("Nenhuma aba ativa encontrada.", "erro");
+    return null;
+  }
+
+  if (!tab.url?.startsWith(TARGET_URL)) {
+    if (isNfseUrl(tab.url)) {
+      await chrome.tabs.update(tab.id, { url: TARGET_URL });
+      log("Aba redirecionada para a tela de Pessoas. Faça login e execute novamente.");
+    } else {
+      await chrome.tabs.create({ url: TARGET_URL, active: true });
+      log("Portal aberto em uma nova aba. Faça login e execute novamente.");
+    }
+    return null;
+  }
+
+  return tab.id;
 }
 
 async function runAutomation(step) {
@@ -364,40 +811,24 @@ async function runAutomation(step) {
     return;
   }
 
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id) {
-    log("Nenhuma aba ativa encontrada.", "erro");
-    return;
-  }
+  const tabId = await getPortalTabId();
+  if (!tabId) return;
 
-  if (!tab.url?.startsWith(TARGET_URL)) {
-    if (isNfseUrl(tab.url)) {
-      await chrome.tabs.update(tab.id, { url: TARGET_URL });
-      log("Aba redirecionada para a tela de Pessoas. Faça login e execute novamente.");
-    } else {
-      await chrome.tabs.create({ url: TARGET_URL, active: true });
-      log("Portal aberto em uma nova aba. Faça login e execute novamente.");
-    }
-    return;
-  }
-
-  if (getAutoAdvanceValue() === "yes" && step !== "diagnose") {
-    await runAutoFlow(tab.id, preset, step);
-    return;
-  }
-
-  await runSingleAutomationStep(tab.id, preset, step);
+  await runSingleAutomationStep(tabId, preset, step);
 }
 
 function buildPayload(step, preset, autoAdvance = false) {
+  const useCustom = elements.customToggle.checked;
+  const customValue = elements.runValueInput.value.trim();
+  const customDescription = elements.runDescriptionInput.value.trim();
   return {
     step,
     autoAdvance,
     client: {
       name: preset.name,
       cnpj: preset.cnpj,
-      value: normalizeMoney(elements.runValueInput.value || preset.value || settings.defaultValue),
-      description: elements.runDescriptionInput.value.trim() || preset.description || settings.defaultDescription
+      value: normalizeMoney(useCustom && customValue ? customValue : preset.value || settings.defaultValue),
+      description: useCustom && customDescription ? customDescription : preset.description || settings.defaultDescription
     },
     settings
   };
@@ -451,12 +882,6 @@ function nextStepForPanel(step) {
   }[step] || null;
 }
 
-function stepSequenceFrom(startStep) {
-  const order = ["people", "service", "values"];
-  const index = order.indexOf(startStep);
-  return index >= 0 ? order.slice(index) : [];
-}
-
 async function waitForPortalStep(tabId, step, timeout = 15000) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeout) {
@@ -476,21 +901,45 @@ async function waitForPortalStep(tabId, step, timeout = 15000) {
   return false;
 }
 
-async function runAutoFlow(tabId, preset, startStep = "people") {
+async function runEmit() {
+  if (!hasChromeExtensionApi) {
+    log("A automação só roda quando a pasta está carregada como extensão no Chrome.", "erro");
+    return;
+  }
+
+  const preset = getSelectedPreset();
+  if (!preset) {
+    log("Selecione um cliente antes de emitir.", "erro");
+    return;
+  }
+
+  const enabledSteps = getEnabledSteps();
+  if (!enabledSteps.length) {
+    log("Marque ao menos a etapa Pessoas.", "erro");
+    return;
+  }
+
+  const tabId = await getPortalTabId();
+  if (!tabId) return;
+
+  await runEmitFlow(tabId, preset, enabledSteps);
+}
+
+async function runEmitFlow(tabId, preset, enabledSteps) {
   if (automationRunning) {
-    log("Auto já está em execução.");
+    log("A automação já está em execução.");
     return;
   }
 
   automationRunning = true;
-  let completed = false;
   let failed = false;
-  setAutomationStatus("running", "Auto em execução");
+  setAutomationStatus("running", "Preenchendo");
   try {
-    const sequence = stepSequenceFrom(startStep);
-    for (const currentStep of sequence) {
-      const ready = await waitForPortalStep(tabId, currentStep, currentStep === startStep ? 1000 : 15000);
-      if (!ready && currentStep !== startStep) {
+    const firstStep = enabledSteps[0];
+    for (const currentStep of enabledSteps) {
+      const isFirst = currentStep === firstStep;
+      const ready = await waitForPortalStep(tabId, currentStep, isFirst ? 1000 : 15000);
+      if (!ready && !isFirst) {
         log(`A etapa ${labelForStep(currentStep)} não carregou a tempo.`, "erro");
         failed = true;
         break;
@@ -503,18 +952,20 @@ async function runAutoFlow(tabId, preset, startStep = "people") {
       }
 
       const nextStep = nextStepForPanel(currentStep);
-      if (!nextStep) break;
+      const shouldAdvance = Boolean(nextStep) && (enabledSteps.includes(nextStep) || nextStep === "review");
+      if (!shouldAdvance) {
+        log(`Preenchimento parou em ${labelForStep(currentStep)} para revisão.`);
+        break;
+      }
 
       const advanced = await runSingleAutomationStep(tabId, preset, "next");
       if (!advanced) {
         failed = true;
         break;
       }
+
       if (nextStep === "review") {
-        log("Auto chegou à tela de revisão.");
-        elements.autoAdvanceToggle.checked = false;
-        await saveSettings();
-        completed = true;
+        log("Chegou à tela de revisão. Confira e emita a nota manualmente.");
         break;
       }
 
@@ -527,10 +978,10 @@ async function runAutoFlow(tabId, preset, startStep = "people") {
     }
   } finally {
     automationRunning = false;
-    if (completed) {
-      setAutomationStatus("done", "Auto finalizado");
-    } else if (failed) {
-      setAutomationStatus("error", "Auto interrompido");
+    if (failed) {
+      setAutomationStatus("error", "Automação interrompida");
+    } else {
+      setAutomationStatus("done", "Pronto para revisar");
     }
   }
 }
@@ -619,10 +1070,13 @@ function setAutomationStatus(status, text) {
 }
 
 function automateNfseStep(payload) {
-  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const config = payload.settings || {};
+  // Delays fixos calibrados a 40% dos valores conservadores originais (validado em uso).
+  // As esperas por condição (waitFor/waitForSelectValue/waitForEnabledControlById) seguem
+  // intactas como rede de segurança — esperam o campo/lista carregar de verdade.
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, Math.round(ms * 0.4)));
   const details = [];
   const errors = [];
-  const config = payload.settings || {};
 
   const normalize = (value) =>
     String(value ?? "")
@@ -1433,10 +1887,13 @@ function automateNfseStep(payload) {
     }
 
     const container = byId(`${id}_chosen`);
-    const waitBeforeEnter = options.waitBeforeEnter ?? 800;
-    const settleDelay = options.settleDelay ?? 500;
+    // Detecta carregamento/seleção em vez de delay fixo: espera a opção surgir na
+    // lista (clica nela) e confirma pela mudança de valor. Enter fica como fallback.
+    const resultTimeout = options.resultTimeout ?? 4000;
+    const commitTimeout = options.commitTimeout ?? 2500;
 
     if (container) {
+      const previousValue = source?.value || "";
       clickElement(container.querySelector(".chosen-single, .chosen-choices, a, div") || container);
       await sleep(350);
 
@@ -1448,19 +1905,38 @@ function automateNfseStep(payload) {
       if (!search) return false;
 
       await searchSet(search, query, { force: true });
-      await sleep(waitBeforeEnter);
-      await pressEnterOnly(search);
-      await sleep(settleDelay);
+
+      const option = await waitFor(
+        () => findAutocompleteOption(container, options.label) || findAutocompleteOption(container, null),
+        resultTimeout
+      );
+      if (option && visible(option)) {
+        clickElement(option.querySelector("a, span") || option);
+      } else {
+        await pressEnterOnly(search);
+      }
+
+      if (source) await waitForSelectValue(source, previousValue, commitTimeout);
       return true;
     }
 
     if (!source || !writable(source)) return false;
+    const previousValue = source.value || "";
     clickElement(source);
     await sleep(250);
     await searchSet(source, query, { force: true });
-    await sleep(waitBeforeEnter);
-    await pressEnterOnly(source);
-    await sleep(settleDelay);
+
+    const option = await waitFor(
+      () => findAutocompleteOption(null, options.label) || findAutocompleteOption(null, null),
+      resultTimeout
+    );
+    if (option && visible(option)) {
+      clickElement(option.querySelector("a, .ui-menu-item-wrapper, span") || option);
+    } else {
+      await pressEnterOnly(source);
+    }
+
+    await waitForSelectValue(source, previousValue, commitTimeout);
     return true;
   };
 

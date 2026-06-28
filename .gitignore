@@ -1,1 +1,4 @@
 .DS_Store
+
+# Dados de clientes (CNPJ/valores) — nunca versionar/expor no GitHub
+clientes*.json

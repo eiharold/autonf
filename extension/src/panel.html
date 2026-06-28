@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AutoNF NFS-e</title>
+    <link rel="stylesheet" href="panel.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <img src="../assets/logo-header-simples.svg" alt="" class="brand-logo">
+          <div>
+            <p class="eyebrow">Emissor Nacional</p>
+            <h1>AutoNF NFS-e</h1>
+          </div>
+        </div>
+        <button id="openPortalBtn" class="icon-button" title="Abrir portal" aria-label="Abrir portal">
+          <span aria-hidden="true">↗</span>
+        </button>
+      </header>
+
+      <nav class="tabs" role="tablist">
+        <button id="tabEmissao" type="button" class="tab is-active" data-tab="emissao" role="tab" aria-selected="true">Emissão</button>
+        <button id="tabExportacao" type="button" class="tab" data-tab="exportacao" role="tab" aria-selected="false">Exportação</button>
+        <button id="tabConfig" type="button" class="tab tab-icon" data-tab="config" role="tab" aria-selected="false" title="Configurações" aria-label="Configurações">⚙</button>
+      </nav>
+
+      <div class="tab-panel is-active" id="panelEmissao" data-panel="emissao" role="tabpanel" aria-labelledby="tabEmissao">
+
+      <section class="section">
+        <div class="section-head">
+          <h2>Cliente</h2>
+          <div class="toolbar">
+            <button id="newPresetBtn" class="secondary icon-only" title="Novo cliente" aria-label="Novo cliente">+</button>
+            <button id="editPresetBtn" type="button" class="secondary icon-only" title="Editar cliente" aria-label="Editar cliente">✎</button>
+          </div>
+        </div>
+        <label class="field compact-field">
+          <select id="presetSelect"></select>
+        </label>
+        <div class="selected-summary">
+          <h3 id="selectedName">Nenhum cliente</h3>
+          <dl>
+          <div>
+            <dt>CNPJ</dt>
+            <dd id="selectedCnpj">-</dd>
+          </div>
+          <div>
+            <dt>Valor</dt>
+            <dd id="selectedValue">-</dd>
+          </div>
+          </dl>
+        </div>
+      </section>
+
+      <form id="presetForm" class="section form is-hidden">
+        <input type="hidden" id="presetId">
+        <div class="section-head">
+          <h2 id="presetFormTitle">Novo cliente</h2>
+          <button type="button" id="closePresetFormBtn" class="ghost-button">Fechar</button>
+        </div>
+        <label class="field">
+          <span>Nome</span>
+          <input id="nameInput" autocomplete="off" required>
+        </label>
+        <div class="form-grid">
+          <label class="field">
+            <span>CNPJ</span>
+            <input id="cnpjInput" inputmode="numeric" placeholder="00.000.000/0000-00" required>
+          </label>
+          <label class="field">
+            <span>Valor (R$)</span>
+            <input id="valueInput" inputmode="decimal" placeholder="600,00" required>
+          </label>
+        </div>
+        <label class="field">
+          <span>Descrição</span>
+          <textarea id="descriptionInput" rows="3" required></textarea>
+        </label>
+        <div class="button-row">
+          <button type="submit" class="primary">Salvar cliente</button>
+          <button type="button" id="deletePresetBtn" class="danger">Excluir</button>
+        </div>
+      </form>
+
+      <section class="section">
+        <div class="section-head note-head">
+          <h2>Preenchimento automático</h2>
+        </div>
+        <p class="hint">Marque até onde a automação deve ir — ela preenche as telas em sequência e para na última marcada.</p>
+        <div class="action-grid">
+          <button id="fillPeopleBtn" type="button" class="step-button is-active" data-step="people" aria-pressed="true">
+            <span aria-hidden="true">👥</span>
+            <strong>Pessoas</strong>
+          </button>
+          <button id="fillServiceBtn" type="button" class="step-button is-active" data-step="service" aria-pressed="true">
+            <span aria-hidden="true">🔧</span>
+            <strong>Serviço</strong>
+          </button>
+          <button id="fillValuesBtn" type="button" class="step-button is-active" data-step="values" aria-pressed="true">
+            <span aria-hidden="true">💲</span>
+            <strong>Valores</strong>
+          </button>
+        </div>
+        <label class="checkbox-row">
+          <input type="checkbox" id="customToggle">
+          <span>Valor e descrição personalizados</span>
+        </label>
+        <div id="customFields" class="is-hidden">
+          <label class="field">
+            <span>Valor desta nota (R$)</span>
+            <input id="runValueInput" inputmode="decimal">
+          </label>
+          <label class="field">
+            <span>Descrição desta nota</span>
+            <textarea id="runDescriptionInput" rows="3"></textarea>
+          </label>
+        </div>
+        <button id="emitBtn" type="button" class="primary emit-button">Preencher</button>
+      </section>
+
+      </div><!-- /panelEmissao -->
+
+      <div class="tab-panel" id="panelExportacao" data-panel="exportacao" role="tabpanel" aria-labelledby="tabExportacao">
+        <section class="section">
+          <div class="section-head">
+            <h2>Exportação</h2>
+          </div>
+          <p class="hint">Filtre o mês na página, clique em Buscar para listar, e baixe cada XML no portal — eu marco o progresso aqui.</p>
+          <div class="form-grid">
+            <label class="field">
+              <span>Mês</span>
+              <select id="exportMonth"></select>
+            </label>
+            <label class="field">
+              <span>Ano</span>
+              <input id="exportYear" inputmode="numeric" maxlength="4">
+            </label>
+          </div>
+          <button id="fillDatesBtn" type="button" class="secondary emit-button">Preencher datas do mês</button>
+          <button id="fetchNfBtn" type="button" class="primary emit-button">Buscar NFs do mês</button>
+          <div id="exportResults" class="is-hidden">
+            <p id="exportSummary" class="hint"></p>
+            <div class="progress"><div id="exportProgressBar" class="progress-bar"></div></div>
+            <p id="exportProgressText" class="hint"></p>
+            <ul id="exportChecklist" class="checklist"></ul>
+            <div class="button-row">
+              <button id="copyListBtn" type="button" class="secondary">Copiar lista</button>
+              <button id="resetChecklistBtn" type="button" class="ghost-button">Reiniciar</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="tab-panel" id="panelConfig" data-panel="config" role="tabpanel" aria-labelledby="tabConfig">
+        <form id="settingsForm" class="section form">
+          <div class="section-head">
+            <h2>Configurações</h2>
+          </div>
+          <div class="form-grid">
+            <label class="field">
+              <span>Valor padrão (R$)</span>
+              <input id="defaultValueInput" inputmode="decimal">
+            </label>
+            <label class="field">
+              <span>Município</span>
+              <input id="municipalityExactInput" autocomplete="off">
+            </label>
+          </div>
+          <label class="field">
+            <span>Código de Tributação Nacional</span>
+            <input id="taxCodeMatchInput" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>PIS/COFINS</span>
+            <input id="pisSituationPrefixInput" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>NBS</span>
+            <input id="nbsLabelInput" autocomplete="off">
+          </label>
+          <div class="form-grid">
+            <label class="field">
+              <span>Valor tipo retenção</span>
+              <input id="retentionTypeValueInput" autocomplete="off">
+            </label>
+            <label class="field">
+              <span>Tipo retenção</span>
+              <input id="retentionTypeLabelInput" autocomplete="off">
+            </label>
+          </div>
+          <label class="field">
+            <span>Regime de apuração</span>
+            <input id="regimeLabelInput" autocomplete="off">
+          </label>
+          <label class="field">
+            <span>Descrição padrão</span>
+            <textarea id="defaultDescriptionInput" rows="3"></textarea>
+          </label>
+          <div class="button-row">
+            <button type="submit" class="primary">Salvar</button>
+            <button type="button" id="resetSettingsBtn" class="secondary">Restaurar padrões</button>
+          </div>
+        </form>
+
+        <section class="section">
+          <div class="section-head">
+            <h2>Backup de clientes</h2>
+          </div>
+          <p class="hint">Salve seus clientes num arquivo (fora da extensão) e restaure quando precisar — sobrevive a reinstalações.</p>
+          <div class="button-row">
+            <button id="exportClientsBtn" type="button" class="secondary">Exportar</button>
+            <button id="importClientsBtn" type="button" class="secondary">Importar</button>
+          </div>
+          <p id="clientsBackupMsg" class="hint backup-msg"></p>
+          <input id="importClientsInput" type="file" accept=".json,application/json" class="is-hidden">
+        </section>
+      </div>
+
+      <section id="statusSection" class="section diagnostics is-collapsed">
+        <div class="section-head">
+          <h2>Status</h2>
+          <div class="toolbar">
+            <div id="statusIndicator" class="status-indicator is-idle" aria-live="polite">
+              <span aria-hidden="true"></span>
+              <strong id="statusText">Pronto</strong>
+            </div>
+            <button id="toggleStatusBtn" type="button" class="chevron-button" title="Expandir status" aria-label="Expandir status"></button>
+          </div>
+        </div>
+        <pre id="logOutput" aria-live="polite"></pre>
+        <div class="status-actions">
+          <button id="copyLogBtn" type="button" class="ghost-button status-action-icon" title="Copiar log" aria-label="Copiar log">⧉</button>
+          <button id="diagnoseBtn" type="button" class="ghost-button status-action">Diagnóstico</button>
+          <button id="clearLogBtn" class="ghost-button status-action">Limpar</button>
+        </div>
+      </section>
+
+      <footer class="footer">
+        Desenvolvido por <a href="https://eiharold.com" target="_blank" rel="noreferrer">eiHarold</a> - <span id="currentYear"></span>
+      </footer>
+    </main>
+
+    <script src="panel.js"></script>
+  </body>
+</html>

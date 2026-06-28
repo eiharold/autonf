@@ -24,11 +24,15 @@ O login no portal deve ser feito manualmente. A etapa final de emissão/revisão
 1. Abra `chrome://extensions`.
 2. Ative o modo de desenvolvedor.
 3. Clique em "Carregar sem compactação".
-4. Selecione a pasta deste projeto.
+4. Selecione a subpasta **`extension/`** deste projeto (e **não** a raiz).
+
+> A extensão carregável fica em `extension/`. A raiz do projeto guarda só a meta do
+> Harold OS (`_contexto/`, `_logs/`, `AGENTS.md`, etc.) — fora dela porque o Chrome
+> recusa carregar pastas com nome começando em `_`.
 
 Depois de qualquer alteração nos arquivos, volte em `chrome://extensions` e clique em "Atualizar" no card da extensão.
 
-Ao clicar no ícone da extensão, a extensão abre `https://www.nfse.gov.br/EmissorNacional/DPS/Pessoas`. Se a aba ativa já estiver em `nfse.gov.br`, ela é reaproveitada; caso contrário, uma nova aba é aberta.
+Ao clicar no ícone da extensão (selecionada de `extension/`), ela abre `https://www.nfse.gov.br/EmissorNacional/DPS/Pessoas`. Se a aba ativa já estiver em `nfse.gov.br`, ela é reaproveitada; caso contrário, uma nova aba é aberta.
 
 ## Fluxo de uso
 
